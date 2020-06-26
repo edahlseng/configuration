@@ -1,27 +1,20 @@
 /* @flow */
 
 import pathUtils from "path";
+import { always, cond, equals, nth, path, pipeWith, T } from "ramda";
 import {
-	always,
-	cond,
-	equals,
-	flip,
-	keys,
-	nth,
-	path,
-	pipeWith,
-	T,
-} from "ramda";
-import { Eff, Output, run as runEff, State } from "eff";
+	chain as chainEff,
+	FileSystem,
+	Output,
+	run as runEff,
+	State,
+} from "eff";
 
 import setup from "./setup.js";
 
 const getPath = pathToGet => State.get().map(path(pathToGet));
 
-const map = (x, f: Function) => Eff.chain(x, y => Eff.pure(f(y)));
-const mapWith = flip(map);
-
-const chain = (a, b) => Eff.chain(b, a);
+const chain = (a, b) => chainEff(a)(b);
 
 const printHelpOutput = pipeWith(chain)([
 	always(getPath(["scriptTitle"])),
@@ -53,7 +46,7 @@ const printHelpOutput = pipeWith(chain)([
 	),
 	x =>
 		Output.putStringLine(
-			`To learn more about a given command, run: ${x} [command] help`,
+			`To learn more about a given command, run: ${x} [command] --help`,
 		),
 ]);
 
@@ -64,6 +57,7 @@ const invalidArguments = pipeWith(chain)([
 ]);
 
 const main = pipeWith(chain)([
+	always(getPath(["process", "argv"])),
 	always(getPath(["process", "argv"]).map(nth(2))),
 	cond([[equals("setup"), setup], [T, invalidArguments]]),
 ]);
@@ -71,24 +65,46 @@ const main = pipeWith(chain)([
 export const run = ({
 	scriptTitle,
 	scriptDescription,
-	options = {},
+	options,
 	defaults = {},
 	process,
 	effectInterpreters = {
 		state: State.interpretState,
 		output: Output.interpretOutputStdOut,
+		fileSystem: FileSystem.interpretLocalFileSystem(""),
 	},
 	callback,
 }: {
 	scriptTitle: string,
 	scriptDescription: string,
-	options?: { [string]: {} },
+	options?: {
+		[string]: {
+			alternateNames?: [],
+			description: string,
+			configurationFiles?: Array<{ path: string, content: string }>,
+			jsonData: Array<| {
+						filePath: string,
+						dataPath: Array<string>,
+						content: string,
+				  }
+				| {
+						filePath: string,
+						dataPath: Array<string>,
+						modify: string => string,
+				  },>,
+		},
+	},
 	defaults?: { [string]: {} },
-	process: { env: { [string]: ?string }, argv: Array<string>, ... },
+	process: {
+		env: { [string]: ?string },
+		argv: Array<string>,
+		cwd: string,
+		...
+	},
 	callback: Function,
-	effectInterpreters?: { state: any, output: any },
+	effectInterpreters?: { state: any, output: any, fileSystem: any },
 }) =>
-	runEff(
+	runEff([
 		effectInterpreters.state({
 			scriptTitle,
 			scriptDescription,
@@ -97,4 +113,5 @@ export const run = ({
 			defaults,
 		}),
 		effectInterpreters.output,
-	)(callback)(main());
+		effectInterpreters.fileSystem,
+	])(callback)(main());

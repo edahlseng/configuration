@@ -1,7 +1,7 @@
 /* @flow */
 
 import test from "ava";
-import { State, Output } from "eff";
+import { FileSystem, State, Output } from "eff";
 import stream from "stream";
 
 import { run } from "./index.js";
@@ -26,6 +26,10 @@ test.cb("Prints help information", t => {
 		effectInterpreters: {
 			state: State.interpretState,
 			output: Output.interpretOutput(new VariableStream()),
+			fileSystem: FileSystem.interpretMockFileSystem({
+				workingDirectory: "/",
+				startingFileSystem: {},
+			}),
 		},
 		callback: () => {
 			t.is(
@@ -43,7 +47,7 @@ Commands:
   help    Prints this help message
   setup   Sets up configuration files
 
-To learn more about a given command, run: configuration [command] help
+To learn more about a given command, run: configuration [command] --help
 `,
 			);
 			t.end();
